@@ -11,7 +11,17 @@
 # Depending on the chosen feauters pyfuscator may add some functions and imports to the outputfile. 				   #
 ########################################################################################################################
 
-import sys, getopt, re, base64, random, string, py_compile, importlib, os.path, StringIO, gzip
+import sys
+import getopt
+import re
+import base64
+import random
+import string
+import py_compile
+import importlib
+import os.path
+import StringIO
+import gzip
 from inspect import getmembers, isfunction
 from itertools import izip, cycle
 
