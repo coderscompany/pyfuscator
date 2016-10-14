@@ -7,6 +7,8 @@ import string
 import py_compile
 import importlib
 import os.path
+import StringIO
+import gzip
 from inspect import getmembers, isfunction
 from itertools import izip, cycle
 
@@ -20,7 +22,7 @@ def showbanner():
 	print "\t| |_) | |_| | | | |_| \__ \ (_| (_| | || (_) | |   "
 	print "\t| .__/ \__, |_|  \__,_|___/\___\__,_|\__\___/|_|   "
 	print "\t| |     __/ |     Obfuscater for python scripts    "
-	print "\t|_|    |___/      Version: 1.0                     "
+	print "\t|_|    |___/      Version: 1.1                     "
 
 
 # Displays help (-h)
@@ -35,6 +37,7 @@ def showhelp():
 	print '\t-k, --key\t\tDefines a custom key. Can only be used with the -x switch (optional)'
 	print '\t-c\t\t\tCompile to byte code (optional)'
 	print '\t-f\t\t\tRename function names (optional)'
+	print '\t-z\t\t\tCompress input with gzip (optional)'
 	print '\t-v\t\t\tVerbose'
 	print '\t-h\t\t\tShows this help screen\r\n'
 
@@ -64,20 +67,35 @@ def renamefunctionnames(scriptname, script):
 	return script
 
 
+# Returns a gzip compressed string
+def gz(data):
+	out = StringIO.StringIO()
+	with gzip.GzipFile(fileobj=out, mode="w") as f:
+		f.write(data)
+		f.close()
+	return out.getvalue()
+
+
 # Returns a random key of userdefined length
 def randomkey(length):
 	return ''.join(random.choice(string.lowercase) for i in range(length))
 
 
 # Returns with key XORed data
-def xorcrypt(data, key):
+def xorcrypt(data, key, compress):
 	xored = ''.join(chr(ord(x) ^ ord(y)) for (x, y) in izip(data, cycle(key)))
-	return "from itertools import izip,cycle;import base64;a=\"\"\""+base64.encodestring(xored).strip()+"\"\"\";a=base64.decodestring(a);b=''.join(chr(ord(x)^ord(y))for(x,y)in izip(a,cycle('"+key+"')));exec(b);"
+	if compress == 0:
+		return "from itertools import izip,cycle;import base64\na=\"\"\""+base64.encodestring(xored).strip()+"\"\"\"\na=base64.decodestring(a)\nb=''.join(chr(ord(x)^ord(y))for(x,y)in izip(a,cycle('"+key+"')))\nexec(b)"
+	else:
+		return "from itertools import izip,cycle;import base64,StringIO,gzip; \ndef gunz(data):\n\tinfile=StringIO.StringIO()\n\tinfile.write(data)\n\twith gzip.GzipFile(fileobj=infile, mode=\"r\") as f:\n\t\tf.rewind()\n\t\treturn f.read()\na=\"\"\""+base64.encodestring(xored).strip()+"\"\"\"\na=base64.decodestring(a)\nb=''.join(chr(ord(x)^ord(y))for(x,y)in izip(a,cycle('"+key+"')))\nexec(gunz(b))"
 
 
 # Returns base64 encoded data
-def b64(data):
-	return "a=\"\"\"" + base64.b64encode(data) + "\"\"\";import base64;exec(base64.b64decode(a));"
+def b64(data, compress):
+	if compress == 0:
+		return "import base64\na=\"\"\"" + base64.b64encode(data) + "\"\"\"\nexec(base64.b64decode(a))"
+	else:
+		return "import base64,gzip,StringIO\ndef gunz(data):\n\tinfile=StringIO.StringIO()\n\tinfile.write(data)\n\twith gzip.GzipFile(fileobj=infile, mode=\"r\") as f:\n\t\tf.rewind()\n\t\treturn f.read()\na=\"\"\"" + base64.b64encode(data) + "\"\"\"\nexec(gunz(base64.b64decode(a)))"
 
 
 # Writes data to a file
@@ -99,16 +117,19 @@ def readfile(filename):
 	return data
 
 
-def obfuscate(filename, data, crypt, key, renamefunctions):
+def obfuscate(filename, data, crypt, key, renamefunctions, compress):
 	if renamefunctions == 1:
 		data = renamefunctionnames(filename, data)
+	if compress == 1:
+		data = gz(data)
+		print '[OK] Source was gzip compressed'
 	if crypt == 1:
 		if key == '':
 			key = randomkey(64)
-			data = xorcrypt(data, key)
+			data = xorcrypt(data, key, compress)
 			print '[OK] Source was XOR encrypted with 64 bytes key'
 	else:
-		data = b64(data)
+		data = b64(data, compress)
 		print '[OK] Source was base64 encoded'
 	return data
 
@@ -121,11 +142,12 @@ def main(argv):
 	encrypt = 0
 	bytecode = 0
 	renamefunctions = 0
+	compress = 0
 	try:
-		opts, args = getopt.getopt(argv, "hvfcxi:o:k:", ["inputfile=", "outputfile=", "key="])
+		opts, args = getopt.getopt(argv, "hvzfcxi:o:k:", ["inputfile=", "outputfile=", "key="])
 	except getopt.GetoptError:
 		showbanner()
-		print '\r\nUsage: python %s -i <inputfile.py> -o <outputfile.py> [-v -x -k <key> -c -h -f]\r\n' % sys.argv[0]
+		print '\r\nUsage: python %s -i <inputfile.py> -o <outputfile.py> [-v -x -k <key> -c -h -f -z]\r\n' % sys.argv[0]
 		sys.exit()
 	for opt, arg in opts:
 		if opt == '-h':
@@ -138,6 +160,8 @@ def main(argv):
 			encrypt = 1
 		elif opt == '-c':
 			bytecode = 1
+		elif opt == '-z':
+			compress = 1
 		elif opt == '-f':
 			renamefunctions = 1
 		elif opt in ("-k", "--key"):
@@ -167,7 +191,7 @@ def main(argv):
 				if verbose == 1:
 					print inputdata
 
-				outputdata = obfuscate(inputfile[:-3], inputdata, encrypt, key, renamefunctions)
+				outputdata = obfuscate(inputfile[:-3], inputdata, encrypt, key, renamefunctions, compress)
 
 				# if verbosity was enabled the output is printed out
 				if verbose == 1:
@@ -199,7 +223,7 @@ def main(argv):
 	# If no input- or outputfile is defined a usage hint is shown
 	else:
 		showbanner()
-		print '\r\nUsage: python %s -i <inputfile.py> -o <outputfile.py> [-v -x -k <key> -c -h -f]\r\n' % sys.argv[0]
+		print '\r\nUsage: python %s -i <inputfile.py> -o <outputfile.py> [-v -x -k <key> -c -h -f -z]\r\n' % sys.argv[0]
 		sys.exit()
 
 	print '\r\n'
