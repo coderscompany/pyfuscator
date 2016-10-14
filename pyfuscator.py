@@ -1,14 +1,17 @@
-import sys
-import getopt
-import re
-import base64
-import random
-import string
-import py_compile
-import importlib
-import os.path
-import StringIO
-import gzip
+########################################################################################################################
+# pyfuscator.py																										   #
+# Version: 1.1																										   #
+# Author: Sebastian Bitter <sebastian.bitter@gmx.net>																   #
+# License: GPL V3																									   #
+# 																													   #
+# pyfucator is an obfuscator for python scripts. 																	   #
+# It is capable of renaming function names, Encrypting the source with XOR, compressing the source with gzip,	       #
+# encoding the source with base64 and finally compiling a python binary file (.pyc).  							       #
+# All features except for base64 encoding are optional.																   #
+# Depending on the chosen feauters pyfuscator may add some functions and imports to the outputfile. 				   #
+########################################################################################################################
+
+import sys, getopt, re, base64, random, string, py_compile, importlib, os.path, StringIO, gzip
 from inspect import getmembers, isfunction
 from itertools import izip, cycle
 
@@ -87,7 +90,8 @@ def xorcrypt(data, key, compress):
 	if compress == 0:
 		return "from itertools import izip,cycle;import base64\na=\"\"\""+base64.encodestring(xored).strip()+"\"\"\"\na=base64.decodestring(a)\nb=''.join(chr(ord(x)^ord(y))for(x,y)in izip(a,cycle('"+key+"')))\nexec(b)"
 	else:
-		return "from itertools import izip,cycle;import base64,StringIO,gzip; \ndef gunz(data):\n\tinfile=StringIO.StringIO()\n\tinfile.write(data)\n\twith gzip.GzipFile(fileobj=infile, mode=\"r\") as f:\n\t\tf.rewind()\n\t\treturn f.read()\na=\"\"\""+base64.encodestring(xored).strip()+"\"\"\"\na=base64.decodestring(a)\nb=''.join(chr(ord(x)^ord(y))for(x,y)in izip(a,cycle('"+key+"')))\nexec(gunz(b))"
+		randomname = randomkey(64)
+		return "from itertools import izip,cycle;import base64,StringIO,gzip; \ndef " + randomname + "(data):\n\tinfile=StringIO.StringIO()\n\tinfile.write(data)\n\twith gzip.GzipFile(fileobj=infile, mode=\"r\") as f:\n\t\tf.rewind()\n\t\treturn f.read()\na=\"\"\""+base64.encodestring(xored).strip()+"\"\"\"\na=base64.decodestring(a)\nb=''.join(chr(ord(x)^ord(y))for(x,y)in izip(a,cycle('"+key+"')))\nexec("+randomname+"(b))"
 
 
 # Returns base64 encoded data
@@ -95,7 +99,8 @@ def b64(data, compress):
 	if compress == 0:
 		return "import base64\na=\"\"\"" + base64.b64encode(data) + "\"\"\"\nexec(base64.b64decode(a))"
 	else:
-		return "import base64,gzip,StringIO\ndef gunz(data):\n\tinfile=StringIO.StringIO()\n\tinfile.write(data)\n\twith gzip.GzipFile(fileobj=infile, mode=\"r\") as f:\n\t\tf.rewind()\n\t\treturn f.read()\na=\"\"\"" + base64.b64encode(data) + "\"\"\"\nexec(gunz(base64.b64decode(a)))"
+		randomname = randomkey(64)
+		return "import base64,gzip,StringIO\ndef " + randomname + "(data):\n\tinfile=StringIO.StringIO()\n\tinfile.write(data)\n\twith gzip.GzipFile(fileobj=infile, mode=\"r\") as f:\n\t\tf.rewind()\n\t\treturn f.read()\na=\"\"\"" + base64.b64encode(data) + "\"\"\"\nexec("+randomname+"(base64.b64decode(a)))"
 
 
 # Writes data to a file
@@ -117,13 +122,18 @@ def readfile(filename):
 	return data
 
 
+# Depending on the parameters different obfuscation techniques are applied
 def obfuscate(filename, data, crypt, key, renamefunctions, compress):
+	# Renames functionnames
 	if renamefunctions == 1:
 		data = renamefunctionnames(filename, data)
+	# Compresses the input script with gzip
 	if compress == 1:
 		data = gz(data)
 		print '[OK] Source was gzip compressed'
+	# Encrypts the input script with XOR
 	if crypt == 1:
+		# If no key was passed in a random key is generated
 		if key == '':
 			key = randomkey(64)
 			data = xorcrypt(data, key, compress)
@@ -225,7 +235,6 @@ def main(argv):
 		showbanner()
 		print '\r\nUsage: python %s -i <inputfile.py> -o <outputfile.py> [-v -x -k <key> -c -h -f -z]\r\n' % sys.argv[0]
 		sys.exit()
-
 	print '\r\n'
 
 
